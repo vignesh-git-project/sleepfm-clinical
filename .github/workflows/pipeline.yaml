@@ -34,7 +34,7 @@ jobs:
           PYTHONPATH: .
         run: |
           python scripts/run_pi_pipeline.py \
-            --input_dir "data/${{ github.event.inputs.data_folder }}" \
+            --input_dir "data/csv/${{ github.event.inputs.data_folder }}" \
             --output_dir "outputs/${{ github.event.inputs.data_folder }}"
 
       - name: Upload Cohort Clinical Dashboard
