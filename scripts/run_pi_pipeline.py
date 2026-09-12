@@ -4,7 +4,6 @@ import subprocess
 import argparse
 from pathlib import Path
 
-# Identify repository root (parent of the scripts/ directory)
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 parser = argparse.ArgumentParser()
@@ -14,22 +13,28 @@ args = parser.parse_args()
 
 os.makedirs(args.output_dir, exist_ok=True)
 
-# Copy CSVs to repo root where the core pipeline looks for them
+# Copy CSV inputs to root
 for fname in ["ecg.csv", "max30100_full_day.csv", "mpu6050_full_day.csv"]:
     src = Path(args.input_dir) / fname
     dst = REPO_ROOT / fname
     if src.exists():
         shutil.copy(src, dst)
     else:
-        raise FileNotFoundError(f"Missing required file: {src}")
+        raise FileNotFoundError(f"Missing input CSV: {src}")
 
-# Execute the pipeline with cwd set strictly to REPO_ROOT
+# 1. Run main staging pipeline
+print("Running core staging pipeline...")
 subprocess.run(["python", "run_full_pipeline.py"], cwd=REPO_ROOT, check=True)
 
-# Collect generated artifacts into the output folder
+# 2. Explicitly trigger dashboard export if present
+if (REPO_ROOT / "export_dashboard.py").exists():
+    print("Generating HTML dashboard...")
+    subprocess.run(["python", "export_dashboard.py"], cwd=REPO_ROOT, check=True)
+
+# 3. Collect all output artifacts
 artifacts = [
-    "sleepfm_staging_predictions.csv",
     "clinical_dashboard.html",
+    "sleepfm_staging_predictions.csv",
     "sleepfm_labeled_clinical_report.csv",
     "hypnogram.png"
 ]
@@ -38,3 +43,6 @@ for item in artifacts:
     src = REPO_ROOT / item
     if src.exists():
         shutil.copy(src, Path(args.output_dir) / item)
+        print(f"Collected artifact -> {item}")
+    else:
+        print(f"Warning: {item} not found in root")
