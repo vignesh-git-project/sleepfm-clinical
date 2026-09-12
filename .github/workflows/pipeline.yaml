@@ -1,12 +1,13 @@
 name: SleepFM Pi Pipeline
 
 on:
-  push:
-    paths:
-      - 'data/csv/**'
-      - 'scripts/run_pi_pipeline.py'
-      - '*.py'
   workflow_dispatch:
+    inputs:
+      data_folder:
+        description: 'Target subfolder inside data/ (e.g., subject_01, baseline_night)'
+        required: true
+        default: 'subject_01'
+        type: string
 
 jobs:
   run-pipeline:
@@ -28,18 +29,20 @@ jobs:
           if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
           pip install mne pandas numpy scikit-learn h5py
 
-      - name: Execute Pipeline
+      - name: Execute Pipeline for Selected Cohort
         env:
           PYTHONPATH: .
         run: |
-          python scripts/run_pi_pipeline.py --input_dir data/csv --output_dir outputs/pi_device
+          python scripts/run_pi_pipeline.py \
+            --input_dir "data/${{ github.event.inputs.data_folder }}" \
+            --output_dir "outputs/${{ github.event.inputs.data_folder }}"
 
-      - name: Upload Clinical Dashboard and Reports
+      - name: Upload Cohort Clinical Dashboard
         uses: actions/upload-artifact@v4
         with:
-          name: sleepfm-dashboard-report
+          name: sleepfm-report-${{ github.event.inputs.data_folder }}
           path: |
-            outputs/pi_device/*.html
-            outputs/pi_device/*.csv
-            outputs/pi_device/*.png
+            outputs/${{ github.event.inputs.data_folder }}/*.html
+            outputs/${{ github.event.inputs.data_folder }}/*.csv
+            outputs/${{ github.event.inputs.data_folder }}/*.png
           retention-days: 14
