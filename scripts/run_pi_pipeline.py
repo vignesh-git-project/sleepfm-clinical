@@ -22,16 +22,23 @@ for fname in ["ecg.csv", "max30100_full_day.csv", "mpu6050_full_day.csv"]:
     else:
         raise FileNotFoundError(f"Missing input CSV: {src}")
 
-# 1. Run main staging pipeline
-print("Running core staging pipeline...")
+# 1. Staging pipeline (generates sleepfm_staging_predictions.csv and hypnogram.png)
+print("Step 1: Running core staging pipeline...")
 subprocess.run(["python", "run_full_pipeline.py"], cwd=REPO_ROOT, check=True)
 
-# 2. Explicitly trigger dashboard export if present
+# 2. Disease risk / clinical hazard labeling (generates sleepfm_labeled_clinical_report.csv)
+print("Step 2: Generating clinical risk hazards and impressions...")
+if (REPO_ROOT / "run_diagnosis.py").exists():
+    subprocess.run(["python", "run_diagnosis.py"], cwd=REPO_ROOT, check=True)
+elif (REPO_ROOT / "generate_clinical_impression.py").exists():
+    subprocess.run(["python", "generate_clinical_impression.py"], cwd=REPO_ROOT, check=True)
+
+# 3. HTML Dashboard export
+print("Step 3: Exporting HTML dashboard...")
 if (REPO_ROOT / "export_dashboard.py").exists():
-    print("Generating HTML dashboard...")
     subprocess.run(["python", "export_dashboard.py"], cwd=REPO_ROOT, check=True)
 
-# 3. Collect all output artifacts
+# 4. Collect generated artifacts
 artifacts = [
     "clinical_dashboard.html",
     "sleepfm_staging_predictions.csv",
