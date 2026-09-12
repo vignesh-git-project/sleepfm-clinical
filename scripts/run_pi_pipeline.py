@@ -1,5 +1,4 @@
 import os
-import gzip
 import shutil
 import subprocess
 import argparse
@@ -22,61 +21,51 @@ if not output_path.is_absolute():
 
 os.makedirs(output_path, exist_ok=True)
 
-def stage_or_decompress(base_name, target_dir):
+def stage_compressed_file(base_name, search_dir):
     """
-    Looks for base_name.csv, base_name.csv.z, base_name.z, or base_name.csv.gz,
-    and decompresses/copies it to target_dir/base_name.csv.
+    Finds .Z archives (e.g., ecg.csv.Z, ecg.Z, or plain ecg.csv)
+    and extracts them to REPO_ROOT/base_name.csv.
     """
     candidates = [
-        target_dir / f"{base_name}.csv",
-        target_dir / f"{base_name}.csv.z",
-        target_dir / f"{base_name}.csv.Z",
-        target_dir / f"{base_name}.z",
-        target_dir / f"{base_name}.Z",
-        target_dir / f"{base_name}.csv.gz"
+        search_dir / f"{base_name}.csv.Z",
+        search_dir / f"{base_name}.Z",
+        search_dir / f"{base_name}.csv",
     ]
     
-    found_file = None
+    target_file = None
     for cand in candidates:
         if cand.exists():
-            found_file = cand
+            target_file = cand
             break
             
-    if not found_file:
-        raise FileNotFoundError(f"Could not find {base_name} (.csv, .z, or .gz) in {target_dir}")
-        
-    dest_file = REPO_ROOT / f"{base_name}.csv"
-    
-    # 1. Standard uncompressed CSV
-    if found_file.suffix.lower() == ".csv":
-        shutil.copy(found_file, dest_file)
-        print(f"Staged uncompressed: {found_file.name} -> {dest_file.name}")
-        return
+    if not target_file:
+        raise FileNotFoundError(f"Missing input log for '{base_name}' in {search_dir}")
 
-    # 2. Compressed file (.z / .gz)
-    print(f"Decompressing {found_file.name} -> {dest_file.name}...")
-    try:
-        # Try gzip/zlib stream first (standard for modern .z/.gz exports)
-        with gzip.open(found_file, 'rb') as f_in, open(dest_file, 'wb') as f_out:
-            shutil.copyfileobj(f_in, f_out)
-    except gzip.BadGzipFile:
-        # Fallback to Unix uncompress / gzip CLI tool if standard LZW .Z
-        subprocess.run(["gzip", "-dc", str(found_file)], stdout=open(dest_file, "wb"), check=True)
+    dest_csv = REPO_ROOT / f"{base_name}.csv"
 
-# Process all 3 sensor logs
-required_bases = ["ecg", "max30100_full_day", "mpu6050_full_day"]
-for base in required_bases:
-    stage_or_decompress(base, input_path)
+    if target_file.name.endswith(".Z"):
+        print(f"Decompressing {target_file.name} -> {dest_csv.name}...")
+        # gzip -dc decompresses standard Unix compress (.Z) streams to stdout
+        with open(dest_csv, "wb") as f_out:
+            subprocess.run(["gzip", "-dc", str(target_file)], stdout=f_out, check=True)
+    else:
+        print(f"Staging {target_file.name} -> {dest_csv.name}...")
+        shutil.copy(target_file, dest_csv)
 
-# Step 2: Run pipeline CLI
+# 1. Decompress and stage the 3 raw hardware logs
+required_logs = ["ecg", "max30100_full_day", "mpu6050_full_day"]
+for log_prefix in required_logs:
+    stage_compressed_file(log_prefix, input_path)
+
+# 2. Run staging and clinical hazard inference
 print("\nStep 1: Running pipeline CLI...")
 subprocess.run(["python", "run_pipeline_cli.py"], cwd=REPO_ROOT, check=True)
 
-# Step 3: Export HTML dashboard
+# 3. Export HTML dashboard
 print("\nStep 2: Exporting HTML dashboard...")
 subprocess.run(["python", "export_dashboard.py"], cwd=REPO_ROOT, check=True)
 
-# Step 4: Collect generated artifacts
+# 4. Gather artifacts
 artifacts = [
     "clinical_dashboard.html",
     "sleepfm_staging_predictions.csv",
@@ -92,4 +81,4 @@ for item in artifacts:
     else:
         print(f"Warning: {item} not found in root")
 
-print(f"\nCompleted! Artifacts stored in {output_path}")
+print(f"\nExecution complete. Output artifacts preserved in {output_path}")
