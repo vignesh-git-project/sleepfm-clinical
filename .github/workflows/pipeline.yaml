@@ -1,5 +1,5 @@
 name: SleepFM Pi Pipeline
-
+run-name: CSV_Pipeline_run="${{inputs.data_folder}}
 on:
   workflow_dispatch:
     inputs:
