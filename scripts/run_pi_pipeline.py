@@ -65,7 +65,8 @@ artifacts = [
     "clinical_dashboard.html",
     "sleepfm_staging_predictions.csv",
     "sleepfm_labeled_clinical_report.csv",
-    "hypnogram.png"
+    "hypnogram.png",
+    "ep_logits_raw.npy",  # raw epoch logits, used to fit the staging calibration
 ]
 
 for item in artifacts:
