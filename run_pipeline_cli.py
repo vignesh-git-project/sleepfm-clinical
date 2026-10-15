@@ -132,8 +132,26 @@ def main():
 
     n_epochs = N_TOKENS // 6
     ep_logits = raw_logits.reshape(n_epochs, 6, 5).mean(axis=1)
-    calibrated_logits = ep_logits - ep_logits.mean(axis=0)
-    calibrated_probs = np.exp(calibrated_logits) / np.sum(np.exp(calibrated_logits), axis=-1, keepdims=True)
+
+    # Save raw epoch logits (n_epochs x 5) so a calibration can be fit against PSG labels.
+    np.save('ep_logits_raw.npy', ep_logits)
+
+    # Calibration: if staging_calibration.json exists (produced by fit_staging_calibration.py
+    # from PSG-labelled recordings), apply it. Otherwise use the raw model logits.
+    # (Previously: ep_logits - ep_logits.mean(axis=0), which forces every stage to the same
+    # average logit within a night and distorts the stage proportions.)
+    CAL_PATH = 'staging_calibration.json'
+    if os.path.exists(CAL_PATH):
+        with open(CAL_PATH) as f:
+            cal = json.load(f)
+        calibrated_logits = ep_logits @ np.array(cal['coef']).T + np.array(cal['intercept'])
+        print(f"[*] Applied staging calibration from {CAL_PATH}")
+    else:
+        calibrated_logits = ep_logits
+        print("[*] No staging_calibration.json found; using raw model logits")
+
+    shifted = calibrated_logits - calibrated_logits.max(axis=-1, keepdims=True)  # numerically stable softmax
+    calibrated_probs = np.exp(shifted) / np.sum(np.exp(shifted), axis=-1, keepdims=True)
     preds = np.argmax(calibrated_logits, axis=-1)
 
     stage_names = ['Wake', 'N1', 'N2', 'N3', 'REM']
