@@ -137,7 +137,7 @@ def main():
     np.save('ep_logits_raw.npy', ep_logits)
 
     # Calibration: if staging_calibration.json exists (produced by fit_staging_calibration.py
-    # from PSG-labelled recordings), apply it. Otherwise use the raw model logits.
+    # from PSG-labelled recordings), apply it. Otherwise keep the legacy per-night centering.
     # (Previously: ep_logits - ep_logits.mean(axis=0), which forces every stage to the same
     # average logit within a night and distorts the stage proportions.)
     CAL_PATH = 'staging_calibration.json'
@@ -147,8 +147,9 @@ def main():
         calibrated_logits = ep_logits @ np.array(cal['coef']).T + np.array(cal['intercept'])
         print(f"[*] Applied staging calibration from {CAL_PATH}")
     else:
-        calibrated_logits = ep_logits
-        print("[*] No staging_calibration.json found; using raw model logits")
+        # Legacy fallback (unchanged behaviour) until a fitted calibration exists.
+        calibrated_logits = ep_logits - ep_logits.mean(axis=0)
+        print("[*] No staging_calibration.json found; using legacy per-night centering")
 
     shifted = calibrated_logits - calibrated_logits.max(axis=-1, keepdims=True)  # numerically stable softmax
     calibrated_probs = np.exp(shifted) / np.sum(np.exp(shifted), axis=-1, keepdims=True)

@@ -147,9 +147,27 @@ def main():
     n_epochs = N_TOKENS // tokens_per_epoch
     ep_logits = raw_logits.reshape(n_epochs, tokens_per_epoch, 5).mean(axis=1)
 
-    # Center logits against absent chin EMG baseline prior
-    calibrated_logits = ep_logits - ep_logits.mean(axis=0)
-    calibrated_probs = np.exp(calibrated_logits) / np.sum(np.exp(calibrated_logits), axis=-1, keepdims=True)
+    # Save raw epoch logits (n_epochs x 5) so a calibration can be fit against PSG labels.
+    # Rename/move this file per subject before running the next recording.
+    np.save('ep_logits_raw.npy', ep_logits)
+
+    # Calibration: if staging_calibration.json exists (produced by fit_staging_calibration.py
+    # from PSG-labelled recordings), apply it. Otherwise keep the legacy per-night centering.
+    # (Previously: ep_logits - ep_logits.mean(axis=0), which forces every stage to the same
+    # average logit within a night and distorts the stage proportions.)
+    CAL_PATH = 'staging_calibration.json'
+    if os.path.exists(CAL_PATH):
+        with open(CAL_PATH) as f:
+            cal = json.load(f)
+        calibrated_logits = ep_logits @ np.array(cal['coef']).T + np.array(cal['intercept'])
+        print(f"  -> Applied staging calibration from {CAL_PATH}")
+    else:
+        # Legacy fallback (unchanged behaviour) until a fitted calibration exists.
+        calibrated_logits = ep_logits - ep_logits.mean(axis=0)
+        print("[*] No staging_calibration.json found; using legacy per-night centering")
+
+    shifted = calibrated_logits - calibrated_logits.max(axis=-1, keepdims=True)  # numerically stable softmax
+    calibrated_probs = np.exp(shifted) / np.sum(np.exp(shifted), axis=-1, keepdims=True)
     preds = np.argmax(calibrated_logits, axis=-1)
 
     stage_names = ['Wake', 'N1', 'N2', 'N3', 'REM']
